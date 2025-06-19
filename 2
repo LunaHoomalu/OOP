@@ -1,0 +1,116 @@
+package model;
+
+public class ExpressionEvaluator {
+
+    public double evaluate(String expression) {
+        if (!areBracketsBalanced(expression)) {
+            throw new IllegalArgumentException("Неправильное количество скобок");
+        }
+
+        expression = preprocess(expression);
+        return new Object() {
+            int pos = -1, ch;
+
+            void nextChar() { ch = (++pos < expression.length()) ? expression.charAt(pos) : -1; }
+            boolean eat(int charToEat) {
+                while (ch == ' ') nextChar();
+                if (ch == charToEat) {
+                    nextChar();
+                    return true;
+                }
+                return false;
+            }
+
+            double parse() {
+                nextChar();
+                double x = parseExpression();
+                if (pos < expression.length()) throw new RuntimeException("Неожиданный символ: " + (char)ch);
+                return x;
+            }
+
+            double parseExpression() {
+                double x = parseTerm();
+                while (true) {
+                    if      (eat('+')) x += parseTerm();
+                    else if (eat('-')) x -= parseTerm();
+                    else return x;
+                }
+            }
+
+            double parseTerm() {
+                double x = parseFactor();
+                while (true) {
+                    if      (eat('*')) {
+                        if (eat('*')) x = Math.pow(x, parseFactor()); // **
+                        else x *= parseFactor();
+                    } else if (eat('/')) x /= parseFactor();
+                    else return x;
+                }
+            }
+
+            double parseFactor() {
+                if (eat('+')) return parseFactor();
+                if (eat('-')) return -parseFactor();
+
+                double x;
+                int startPos = this.pos;
+
+                if (eat('(')) {
+                    x = parseExpression();
+                    eat(')');
+                } else if (Character.isLetter(ch)) {
+                    while (Character.isLetter(ch)) nextChar();
+                    String func = expression.substring(startPos, this.pos);
+
+                    if (eat('(')) {
+                        double arg = parseExpression();
+                        eat(')');
+                        x = applyFunction(func, arg);
+                    } else {
+                        throw new RuntimeException("Ожидалась функция со скобками");
+                    }
+                } else {
+                    while ((ch >= '0' && ch <= '9') || ch == '.') nextChar();
+                    x = Double.parseDouble(expression.substring(startPos, this.pos));
+                }
+
+                while (eat('!')) x = factorial(x);
+
+                if (eat('^')) x = Math.pow(x, parseFactor());
+
+                return x;
+            }
+        }.parse();
+    }
+
+    private boolean areBracketsBalanced(String expr) {
+        int count = 0;
+        for (char c : expr.toCharArray()) {
+            if (c == '(') count++;
+            else if (c == ')') count--;
+            if (count < 0) return false;
+        }
+        return count == 0;
+    }
+
+    private String preprocess(String expr) {
+        return expr.replaceAll("log\\(", "log2(")
+                   .replaceAll("exp\\(", "exp(");
+    }
+
+    private double applyFunction(String func, double arg) {
+        switch (func) {
+            case "log2": return Math.log(arg) / Math.log(2);
+            case "exp": return Math.exp(arg);
+            default: throw new RuntimeException("Неизвестная функция: " + func);
+        }
+    }
+
+    private double factorial(double num) {
+        if (num != (int) num || num < 0) throw new RuntimeException("Факториал только для неотрицательных целых чисел");
+        int n = (int) num;
+        long result = 1;
+        for (int i = 2; i <= n; i++) result *= i;
+        return result;
+    }
+}
