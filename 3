@@ -1,0 +1,205 @@
+package model;
+
+public enum Role {
+    ADMIN, CEC, CANDIDATE, USER
+}
+
+/////////////////////////////////////
+
+package model;
+
+public class User {
+    private String login;
+    private String password;
+    private Role role;
+    private String fullName;
+    private String birthDate;
+    private String snils;
+
+    public User(String login, String password, Role role) {
+        this.login = login;
+        this.password = password;
+        this.role = role;
+    }
+
+    // Getters and setters...
+}
+
+//////////////////////////////////////////
+
+package model;
+
+import java.time.LocalDate;
+import java.util.List;
+
+public class Election {
+    private String name;
+    private LocalDate endDate;
+    private List<Candidate> candidates;
+    private boolean isFinished;
+    
+    // Constructor, getters, setters
+}
+
+//////////////////////////////////////////////////
+
+package model;
+
+public class Candidate {
+    private String login;
+    private String fullName;
+
+    public Candidate(String login, String fullName) {
+        this.login = login;
+        this.fullName = fullName;
+    }
+
+    // Getters and setters
+}
+
+////////////////////////////////////////////////
+
+package service;
+
+import model.*;
+import java.util.*;
+
+public class ElectionService {
+    private List<Election> elections = new ArrayList<>();
+
+    public void createElection(Election election) {
+        elections.add(election);
+    }
+
+    public List<Election> getAllElections() {
+        return elections;
+    }
+
+    // Добавление кандидатов, завершение, сортировка и т.д.
+}
+
+/////////////////////////////////////////////////////////
+
+package service;
+
+import model.Election;
+import org.apache.pdfbox.pdmodel.*;
+import org.apache.pdfbox.pdmodel.common.*;
+
+import java.io.File;
+import java.io.IOException;
+
+public class ExportService {
+    public void exportElectionToPdf(Election election, String filename) throws IOException {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+
+            PDPageContentStream contentStream = new PDPageContentStream(document, page);
+            contentStream.beginText();
+            contentStream.setLeading(14.5f);
+            contentStream.newLineAtOffset(50, 700);
+            contentStream.showText("Результаты голосования: " + election.getName());
+            contentStream.endText();
+            contentStream.close();
+
+            document.save(new File(filename));
+        }
+    }
+}
+
+/////////////////////////////////////////////////////////////
+
+package controller;
+
+import model.User;
+import model.Role;
+import java.util.Scanner;
+import java.util.Map;
+
+public class AuthController {
+    private Map<String, User> users;
+
+    public AuthController(Map<String, User> users) {
+        this.users = users;
+    }
+
+    public User login() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Логин: ");
+        String login = scanner.nextLine();
+        System.out.print("Пароль: ");
+        String password = scanner.nextLine();
+
+        User user = users.get(login);
+        if (user != null && user.getPassword().equals(password)) {
+            return user;
+        }
+
+        System.out.println("Неверные данные.");
+        return null;
+    }
+}
+
+////////////////////////////////////////////////////////////
+
+package view;
+
+import model.*;
+import service.*;
+
+import java.util.Scanner;
+
+public class Menu {
+    public void show(User user, ElectionService electionService) {
+        Scanner scanner = new Scanner(System.in);
+
+        switch (user.getRole()) {
+            case ADMIN:
+                System.out.println("1. Список пользователей");
+                System.out.println("2. Удалить пользователя");
+                break;
+            case CEC:
+                System.out.println("1. Создать голосование");
+                System.out.println("2. Добавить кандидата");
+                System.out.println("3. Выгрузить результаты");
+                break;
+            case CANDIDATE:
+                System.out.println("1. Заполнить данные о себе");
+                break;
+            case USER:
+                System.out.println("1. Зарегистрироваться");
+                System.out.println("2. Проголосовать");
+                break;
+        }
+    }
+}
+
+////////////////////////////////////////////////////////
+
+import controller.AuthController;
+import model.*;
+import service.*;
+import view.Menu;
+
+import java.util.HashMap;
+import java.util.Map;
+
+public class Main {
+    public static void main(String[] args) {
+        Map<String, User> users = new HashMap<>();
+        users.put("admin", new User("admin", "1234", Role.ADMIN));
+        users.put("cec1", new User("cec1", "1234", Role.CEC));
+        users.put("ivan", new User("ivan", "1234", Role.USER));
+        users.put("kand1", new User("kand1", "1234", Role.CANDIDATE));
+
+        AuthController authController = new AuthController(users);
+        ElectionService electionService = new ElectionService();
+
+        User user = authController.login();
+        if (user != null) {
+            Menu menu = new Menu();
+            menu.show(user, electionService);
+        }
+    }
+}
