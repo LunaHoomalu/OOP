@@ -1,0 +1,199 @@
+//DataItem.java /////////////////////////////////////////////////////
+
+package com.api.model;
+
+public class DataItem {
+    private int id;
+    private String content;
+    private boolean readOnly;
+
+    // Constructors, getters, setters
+
+    public DataItem() {}
+
+    public DataItem(int id, String content, boolean readOnly) {
+        this.id = id;
+        this.content = content;
+        this.readOnly = readOnly;
+    }
+
+    // Getters and setters
+}
+
+//DataRepository.java//////////////////////////////////////////////////
+
+package com.api.repository;
+
+import com.api.model.DataItem;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class DataRepository {
+    private final String dbUrl = "jdbc:sqlite:database.db";
+
+    public DataItem getById(int id) throws SQLException {
+        try (Connection conn = DriverManager.getConnection(dbUrl)) {
+            PreparedStatement stmt = conn.prepareStatement("SELECT * FROM data WHERE id = ?");
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return new DataItem(rs.getInt("id"), rs.getString("content"), rs.getBoolean("read_only"));
+            }
+        }
+        return null;
+    }
+
+    public List<DataItem> getAll() throws SQLException {
+        List<DataItem> list = new ArrayList<>();
+        try (Connection conn = DriverManager.getConnection(dbUrl)) {
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT * FROM data");
+            while (rs.next()) {
+                list.add(new DataItem(rs.getInt("id"), rs.getString("content"), rs.getBoolean("read_only")));
+            }
+        }
+        return list;
+    }
+
+    public void save(DataItem item) throws SQLException {
+        try (Connection conn = DriverManager.getConnection(dbUrl)) {
+            PreparedStatement stmt = conn.prepareStatement("INSERT INTO data(id, content, read_only) VALUES (?, ?, ?)");
+            stmt.setInt(1, item.getId());
+            stmt.setString(2, item.getContent());
+            stmt.setBoolean(3, item.isReadOnly());
+            stmt.executeUpdate();
+        }
+    }
+
+    public void update(DataItem item) throws SQLException {
+        try (Connection conn = DriverManager.getConnection(dbUrl)) {
+            PreparedStatement stmt = conn.prepareStatement("UPDATE data SET content = ?, read_only = ? WHERE id = ?");
+            stmt.setString(1, item.getContent());
+            stmt.setBoolean(2, item.isReadOnly());
+            stmt.setInt(3, item.getId());
+            stmt.executeUpdate();
+        }
+    }
+}
+
+//ReadOnlyCache.java/////////////////////////////////////////////////
+
+package com.api.cache;
+
+import com.api.model.DataItem;
+
+import java.util.concurrent.ConcurrentHashMap;
+
+public class ReadOnlyCache {
+    private final ConcurrentHashMap<Integer, DataItem> cache = new ConcurrentHashMap<>();
+
+    public DataItem get(int id) {
+        return cache.get(id);
+    }
+
+    public void put(DataItem item) {
+        if (item.isReadOnly()) {
+            cache.put(item.getId(), item);
+        }
+    }
+
+    public boolean contains(int id) {
+        return cache.containsKey(id);
+    }
+}
+
+//DataService.java/////////////////////////////////////////////
+
+package com.api.service;
+
+import com.api.model.DataItem;
+import com.api.repository.DataRepository;
+import com.api.cache.ReadOnlyCache;
+
+import java.sql.SQLException;
+
+public class DataService {
+    private final DataRepository repository = new DataRepository();
+    private final ReadOnlyCache cache = new ReadOnlyCache();
+
+    public DataItem getDataById(int id) throws SQLException {
+        if (cache.contains(id)) {
+            return cache.get(id);
+        }
+        DataItem item = repository.getById(id);
+        if (item != null && item.isReadOnly()) {
+            cache.put(item);
+        }
+        return item;
+    }
+
+    public void saveData(DataItem item) throws SQLException {
+        repository.save(item);
+        if (item.isReadOnly()) {
+            cache.put(item);
+        }
+    }
+
+    public void updateData(DataItem item) throws SQLException {
+        repository.update(item);
+        if (item.isReadOnly()) {
+            cache.put(item);
+        }
+    }
+}
+
+//DataController.java///////////////////////////////////////////////////
+
+package com.api.controller;
+
+import com.api.model.DataItem;
+import com.api.service.DataService;
+import org.springframework.web.bind.annotation.*;
+
+import java.sql.SQLException;
+
+@RestController
+@RequestMapping("/api/data")
+public class DataController {
+    private final DataService service = new DataService();
+
+    @GetMapping("/{id}")
+    public DataItem getData(@PathVariable int id) throws SQLException {
+        return service.getDataById(id);
+    }
+
+    @PostMapping
+    public void createData(@RequestBody DataItem item) throws SQLException {
+        service.saveData(item);
+    }
+
+    @PutMapping("/{id}")
+    public void updateData(@PathVariable int id, @RequestBody DataItem item) throws SQLException {
+        item.setId(id);
+        service.updateData(item);
+    }
+}
+
+//ApiApplication.java//////////////////////////////////////
+
+package com.api;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ApiApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(ApiApplication.class, args);
+    }
+}
+
+//sql sqlite/////////////////////////////
+
+CREATE TABLE data (
+    id INTEGER PRIMARY KEY,
+    content TEXT NOT NULL,
+    read_only BOOLEAN NOT NULL
+);
